@@ -1,3 +1,16 @@
+/*
+***************** Note to self *****************
+This project is 15% of total grade, dont fuck up!
+checkpoint 1:1.5%
+checkpoint 2:1.5%
+checkpoint 3:1.5% use execvp()
+checkpoint 4:1.5% check lecture4
+checkpoint 5:1.5%
+checkpoint 6:7.5%!! ---very important---
+checkpoint 7:1.5%
+************************************************
+*/
+
 // C Program to design a shell in Linux
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,13 +69,13 @@ int main()
             return (int) args[1];
         }
 
+        // !!
         if ( strcmp(args[0], "!!") == 0){
             HIST_ENTRY *entry = history_get(where_history());
-            printf("%s", entry->line);
-            next_history ();
-            char* recent = (char*) entry->line;
-            args = tokenize(recent);
+            printf("%s\n", entry->line);
+            args = tokenize((char*) entry->line);
             status = execute(args);
+            
 
         }
         else{
@@ -97,7 +110,9 @@ char* readLine()
             exit(EXIT_FAILURE);
         }
     }
-    add_history(line);
+    if( strcmp("!!", line) != 0){
+        add_history(line);
+    }
     //printf("%d", where_history());
 
     return line;
@@ -154,8 +169,22 @@ int execute(char** args)
         return 1;
     }
 
-    else{
-        printf("Bad command\n");
+  
+
+    // make chile
+    pid_t pid, wpid;
+    int status;
+    pid = fork();
+
+    if( pid == 0){
+        if (execvp(args[0], args) == -1) {
+            perror("basic shell");
+        }
+        exit(EXIT_FAILURE);
+    } else if( pid < 0){
+        perror("lsh");
+    } else{
+        waitpid(pid, &status, 0);
     }
 
     return 1;
