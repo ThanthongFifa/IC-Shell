@@ -36,6 +36,12 @@ int inRedirectAt(char** args);
 int outRedirectAt(char** args);
 int checkBackground(char** args);
 
+int exitCode = 0;
+
+void sigintHandler(int sig_num)
+{
+    printf("\n");
+}
 
 int main()
 {
@@ -45,6 +51,8 @@ int main()
     int status = 1;
 
     using_history();
+
+    sigaction(SIGINT, &(struct sigaction){ .sa_handler = sigintHandler }, NULL);
 
     while(status == 1)
     {
@@ -63,11 +71,6 @@ int main()
         
         // split input
         args = tokenize(input);
-
-        // exit
-        if ( strcmp(args[0], "exit") == 0 ){
-            return (int) args[1];
-        }
 
         // !!
         if ( strcmp(args[0], "!!") == 0){
@@ -91,7 +94,7 @@ int main()
     }
 
 
-    return 0;
+    return status;
 }
 
 // function for reading input
@@ -162,11 +165,49 @@ int execute(char** args)
 
     // echo
     if ( strcmp(args[0], "echo") == 0 ){
+        if ( strcmp(args[1], "$?") == 0){
+            printf("%d\n", exitCode);
+            return 1;
+        }
         for( i = 1; args[i] != NULL; i++){
             printf("%s ", args[i]);
         }
         printf("\n");
         return 1;
+    }
+
+    // exit
+    if ( strcmp(args[0], "exit") == 0 ){
+            return atoi(args[1]);
+        }
+
+    // Script mode
+    if ( strcmp(args[0], "./icsh") == 0){
+        FILE * fp;
+        char * line = NULL;
+        size_t len = 0;
+        ssize_t read;
+        const char* name = args[1];
+        int stat = 1;
+
+        fp = fopen(name, "r");
+        if (fp == NULL){
+            return 1;
+        }
+
+        while ((read = getline(&line, &len, fp)) != -1) {
+            //printf("%s", line);
+            char **token =  tokenize(line);
+            stat = execute(token);
+        }
+
+        fclose(fp);
+        if (line){
+            free(line);
+        }
+        exitCode = stat;
+        return 1;
+         
     }
 
   
@@ -189,6 +230,7 @@ int execute(char** args)
 
     return 1;
 
+
 }
 
 
@@ -205,5 +247,6 @@ https://github.com/brenns10/lsh/blob/407938170e8b40d231781576e05282a41634848c/sr
 https://github.com/brenns10/lsh/issues/14
 https://stackoverflow.com/questions/38792542/readline-h-history-usage-in-c
 http://www.math.utah.edu/docs/info/hist_2.html
+https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
 
 */
