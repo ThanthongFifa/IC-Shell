@@ -38,11 +38,6 @@ int checkBackground(char** args);
 
 int exitCode = 0;
 
-void sigintHandler(int sig_num)
-{
-    printf("\n");
-}
-
 int main()
 {
     char *input;
@@ -52,7 +47,11 @@ int main()
 
     using_history();
 
-    sigaction(SIGINT, &(struct sigaction){ .sa_handler = sigintHandler }, NULL);
+    //Signal stuff
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+    signal(SIGQUIT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);
 
     while(status == 1)
     {
@@ -100,19 +99,18 @@ int main()
 // function for reading input
 char* readLine()
 {
-    char* line = (char*) malloc(MAXLEN + 1); // create line
+    char *line = NULL;
+    size_t bufsize = 0;
 
-    // read the input
-    if (fgets(line, MAXLEN + 1, stdin) == NULL) {
-        if (feof(stdin)) {
+    if (getline(&line, &bufsize, stdin) == -1){
+        if (feof(stdin)) {  
             exit(EXIT_SUCCESS);
-        }
-
-        else {
-            perror("fgets error\n");
+        } else  {
+            perror("readline");
             exit(EXIT_FAILURE);
         }
     }
+
     if( strcmp("!!", line) != 0){
         add_history(line);
     }
@@ -210,20 +208,26 @@ int execute(char** args)
          
     }
 
-  
-
-    // make chile
+    // make child
     pid_t pid, wpid;
     int status;
     pid = fork();
 
-    if( pid == 0){
+    if( pid == 0)
+    {
+        // another signal stuff
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTERM, SIG_DFL);
+        signal(SIGQUIT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+
         if (execvp(args[0], args) == -1) {
-            perror("basic shell");
+            perror("bad command");
         }
         exit(EXIT_FAILURE);
+
     } else if( pid < 0){
-        perror("lsh");
+        perror("fork fail");
     } else{
         waitpid(pid, &status, 0);
     }
