@@ -21,20 +21,23 @@ checkpoint 7:1.5%
 #include <signal.h>
 #include<readline/history.h>
 
-
 // Buffer
 #define MAXLEN 512
 #define MAXTOKEN 10
+
+// Redirection
+int inRedirectPresentAt(char** args);
+int outRedirectPresentAt(char** args);
+
+// signal
+void sigint_handler(int signal) {
+    printf("\n");
+}
 
 // main functions
 char* readLine();
 char** tokenize(char*);
 int execute(char**);
-
-// functions for checkpoints
-int inRedirectAt(char** args);
-int outRedirectAt(char** args);
-int checkBackground(char** args);
 
 int exitCode = 0;
 
@@ -48,6 +51,13 @@ int main()
     using_history();
 
     //Signal stuff
+    struct sigaction sa = {
+        .sa_handler = &sigint_handler,
+        .sa_flags = 0
+    };
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+
     signal(SIGINT, SIG_IGN);
     signal(SIGTERM, SIG_IGN);
     signal(SIGQUIT, SIG_IGN);
@@ -55,12 +65,11 @@ int main()
 
     while(status == 1)
     {
-
         //set up
         char* cwd = getcwd(NULL, 0); // current directory
         prompt = malloc( (strlen(cwd) + 3) * sizeof(char) ); // allocate prompt
         strcpy(prompt, cwd);
-        strcat(prompt, ">>> ");
+        strcat(prompt, " >>> ");
         free(cwd);
 
         printf("%s", prompt);
@@ -68,8 +77,13 @@ int main()
         // read user input
         input = readLine();
         
+        
         // split input
         args = tokenize(input);
+        if(args[0] == NULL)
+        {
+            continue;
+        }
 
         // !!
         if ( strcmp(args[0], "!!") == 0){
@@ -153,8 +167,19 @@ char** tokenize(char* line)
 
 // function for execution
 int execute(char** args)
+
 {
     int i;
+    char* inFile;
+    char* outFile;
+    FILE* infp;
+    FILE* outfp;
+    int inRedirect;
+    int outRedirect;
+
+    // check for redirection
+    inRedirect = inRedirectPresentAt(args);
+    outRedirect = outRedirectPresentAt(args);
 
     // if null
     if (args[0] == NULL) {
@@ -221,6 +246,21 @@ int execute(char** args)
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
 
+        // redirection
+        if (inRedirect >= 0) {
+            inFile = args[inRedirect + 1];
+            args[inRedirect] = NULL;
+
+            infp = freopen(inFile, "r", stdin);
+        }
+
+        if (outRedirect >= 0) {
+            outFile = args[outRedirect + 1];
+            args[outRedirect] = NULL;
+
+            outfp = freopen(outFile, "w", stdout);
+        }
+
         if (execvp(args[0], args) == -1) {
             perror("bad command");
         }
@@ -233,8 +273,29 @@ int execute(char** args)
     }
 
     return 1;
+}
 
+// redirection stuff
+int outRedirectPresentAt(char** args)
+{
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], ">") == 0) {
+            return i;
+        }
+    }
 
+    return -1;
+}
+
+int inRedirectPresentAt(char** args)
+{
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], "<") == 0) {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 
