@@ -226,6 +226,32 @@ int execute(char** args)
         return execute(args);
     }
 
+    // help
+    if ( strcmp(args[0], "help") == 0){
+        printf("Thanthong shell\n");
+        printf("The folloowing are built in:\n");
+        printf("     exit <num>\n");
+        printf("     echo <message>\n");
+        printf("     !!\n");
+        printf("     cd");
+        printf("The folloowing are supported feture:\n");
+        printf("     I/O redirection with '<' & '>'\n");
+        printf("     script mode:\n            ./icsh <filename>\n");
+        printf("     background process:\n            <command> &\n");
+    }
+
+    // cd
+    if ( strcmp(args[0],"cd") == 0){
+        if (args[1] == NULL) {
+            fprintf(stderr, "expected argument to \"cd\"\n");
+        } else {
+            if (chdir(args[1]) != 0) {
+                perror("lsh");
+            }
+        }
+        return 1;
+    }
+
     // Script mode
     if ( strcmp(args[0], "./icsh") == 0){
         FILE * fp;
