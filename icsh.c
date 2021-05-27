@@ -28,10 +28,15 @@ checkpoint 7:1.5%
 // Redirection
 int inRedirectPresentAt(char** args);
 int outRedirectPresentAt(char** args);
+int ampersandPresentAt(char** args);
 
 // signal
 void sigint_handler(int signal) {
-    printf("\n");
+    printf("]^C found\n");
+}
+
+void sigstop_handler(int sig) {
+    printf("]^Z found\n");
 }
 
 // main functions
@@ -41,6 +46,11 @@ int execute(char**);
 
 int exitCode = 0;
 
+// keep history
+char history[100][100];
+int history_counter = 0;
+
+
 int main()
 {
     char *input;
@@ -48,7 +58,8 @@ int main()
     char *prompt;
     int status = 1;
 
-    using_history();
+    //using_history();
+    
 
     //Signal stuff
     struct sigaction sa = {
@@ -76,28 +87,23 @@ int main()
 
         // read user input
         input = readLine();
-        
+
+        //printf("%s", input);
+        if(strcmp(input,"!!\n")){
+            // record history
+            history_counter++;
+            strcpy(history[history_counter], input);
+            //printf("keep: %s\n", history[history_counter]);
+        }
         
         // split input
         args = tokenize(input);
-        if(args[0] == NULL)
-        {
-            continue;
-        }
 
-        // !!
-        if ( strcmp(args[0], "!!") == 0){
-            HIST_ENTRY *entry = history_get(where_history());
-            printf("%s\n", entry->line);
-            args = tokenize((char*) entry->line);
-            status = execute(args);
-            
-
-        }
-        else{
-            // execute
-            status = execute(args);
-        }
+        
+       
+        // execute
+        status = execute(args);
+        
         
         //free
         free(args);
@@ -176,10 +182,16 @@ int execute(char** args)
     FILE* outfp;
     int inRedirect;
     int outRedirect;
+    int background;
+
+    pid_t pid = getpid();
 
     // check for redirection
     inRedirect = inRedirectPresentAt(args);
     outRedirect = outRedirectPresentAt(args);
+
+    // check background process
+    background = ampersandPresentAt(args);
 
     // if null
     if (args[0] == NULL) {
@@ -201,8 +213,18 @@ int execute(char** args)
 
     // exit
     if ( strcmp(args[0], "exit") == 0 ){
-            return atoi(args[1]);
+        if( args[1] == NULL){
+            return 0;
         }
+        return atoi(args[1]);
+        }
+
+    // !!
+    if ( strcmp(args[0], "!!") == 0){
+        //printf("%s",history[history_counter]);
+        args = tokenize(history[history_counter]);
+        return execute(args);
+    }
 
     // Script mode
     if ( strcmp(args[0], "./icsh") == 0){
@@ -220,6 +242,12 @@ int execute(char** args)
 
         while ((read = getline(&line, &len, fp)) != -1) {
             //printf("%s", line);
+            if(strcmp(line,"!!\n")){
+                // record history
+                history_counter++;
+                strcpy(history[history_counter], line);
+                //printf("keep: %s\n", history[history_counter]);
+            }
             char **token =  tokenize(line);
             stat = execute(token);
         }
@@ -233,14 +261,34 @@ int execute(char** args)
          
     }
 
+    //bg ----------------------------------bugged
+    if (strcmp(args[0], "bg")==0){
+      pid_t pidnumber;
+      pidnumber=atoi(args[1]);
+      printf("PID: %d\n", pidnumber);
+      kill(pidnumber, SIGCONT);
+      return 0;
+    }
+
+    //fg ----------------------------------bugged
+    // if (strcmp(args[0], "fg")==0){
+    //     pid_t pidnumber;
+    //     pidnumber=atoi(args[1]);
+    //     tcsetpgrp(0, getpgid(pidnumber));
+    //     waitpid(getpgid(pidnumber), NULL, WUNTRACED);
+    //     tcsetpgrp(0, getpgid(shellpid)); shellpid is placeholder
+
+    //   return 0;
+    // }
+
     // make child
-    pid_t pid, wpid;
     int status;
     pid = fork();
 
     if( pid == 0)
     {
         // another signal stuff
+        setpgid(0, getpid());
         signal(SIGINT, SIG_DFL);
         signal(SIGTERM, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
@@ -261,15 +309,35 @@ int execute(char** args)
             outfp = freopen(outFile, "w", stdout);
         }
 
+        // background
+        if (background >= 0) {
+            args[background] = NULL;
+        }
+
         if (execvp(args[0], args) == -1) {
             perror("bad command");
         }
         exit(EXIT_FAILURE);
 
-    } else if( pid < 0){
+    } else if( pid < 0){ // fail
         perror("fork fail");
+
     } else{
-        waitpid(pid, &status, 0);
+        if (background < 0) {
+            setpgid(pid, pid);
+            signal(SIGTTOU, SIG_IGN);
+            tcsetpgrp(STDIN_FILENO, pid);
+            tcsetpgrp(STDOUT_FILENO, pid);
+            //int status;
+            waitpid(pid, &status, WUNTRACED);
+            tcsetpgrp(STDOUT_FILENO, getpid());
+            tcsetpgrp(STDIN_FILENO, getpid());
+
+            //waitpid(pid, &status, 0);
+        }
+        else{
+            printf("running %d in background\n", pid);
+        }
     }
 
     return 1;
@@ -298,10 +366,21 @@ int inRedirectPresentAt(char** args)
     return -1;
 }
 
+// background
+int ampersandPresentAt(char** args)
+{
+    for (int i = 0; args[i] != NULL; i++) {
+        if (strcmp(args[i], "&") == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 
 
 /* references
-
 https://www.geeksforgeeks.org/making-linux-shell-c/
 https://stackoverflow.com/questions/27541910/how-to-use-execvp
 https://web.mit.edu/gnu/doc/html/rlman_2.html
@@ -313,5 +392,4 @@ https://github.com/brenns10/lsh/issues/14
 https://stackoverflow.com/questions/38792542/readline-h-history-usage-in-c
 http://www.math.utah.edu/docs/info/hist_2.html
 https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
-
 */
