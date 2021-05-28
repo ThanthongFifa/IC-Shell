@@ -20,14 +20,18 @@ checkpoint 7:1.5%
 #include <unistd.h>
 #include <signal.h>
 #include<readline/history.h>
+#include <stdlib.h>
 
 // Buffer
 #define MAXLEN 512
 #define MAXTOKEN 10
+#define MAXJOBS 10
 
 // Redirection
 int inRedirectPresentAt(char** args);
 int outRedirectPresentAt(char** args);
+
+//background
 int ampersandPresentAt(char** args);
 
 // signal
@@ -39,16 +43,72 @@ void sigstop_handler(int sig) {
     printf("]^Z found\n");
 }
 
+
+
 // main functions
 char* readLine();
 char** tokenize(char*);
-int execute(char**);
+int execute(char*);
 
 int exitCode = 0;
 
 // keep history
 char history[100][100];
 int history_counter = 0;
+
+// job
+struct job{
+    pid_t pid;
+    int jid;
+    int state;
+    char line[MAXLEN];
+};
+
+int nextjid = 1;
+
+#define UNDEF 0 // undefined
+#define FG 1    // running in foreground
+#define BG 2    // running in background
+#define ST 3    // stopped
+#define DONE 4  // done
+
+struct job jobList[MAXJOBS];
+
+void clearjob(struct job *job) { // clear out jobList
+    job->pid = 0;
+    job->jid = 0;
+    job->state = UNDEF;
+    job->line[0] = '\0';
+}
+
+void initjobs(struct job *jobs) { // initialize jobList
+    int i;
+    for (i = 0; i < MAXJOBS; i++)
+	clearjob(&jobs[i]);
+}
+
+int addjob(struct job *jobs, pid_t pid, int state, char *line);
+void listjobs(struct job *jobList);
+struct job *getjobpid(struct job *jobList, pid_t pid);
+int maxjid(struct job *jobList); 
+int deletejob(struct job *jobList, pid_t pid); 
+struct job *getjobpid(struct job *jobList, pid_t pid);
+int pid2jid(pid_t pid);
+
+void child_handler(int sig){
+    int child_status;
+    pid_t pid;
+    int id;
+    while ((pid = waitpid(-1, &child_status, WNOHANG)) > 0){       
+        //printf("%d",jobList[i].state);
+        id  = pid2jid(pid) - 1;
+        //printf("jid: %d\n", id);
+        //printf("job info: %d\n",jobList[id].jid);
+        if( jobList[id].state != FG)
+            printf("\njob done: [%d] %d %s",jobList[id].jid, jobList[id].pid, jobList[id].line);
+        deletejob(jobList, pid);
+    }
+}
 
 
 int main()
@@ -58,9 +118,6 @@ int main()
     char *prompt;
     int status = 1;
 
-    //using_history();
-    
-
     //Signal stuff
     struct sigaction sa = {
         .sa_handler = &sigint_handler,
@@ -69,10 +126,24 @@ int main()
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
 
-    signal(SIGINT, SIG_IGN);
+    //signal(SIGINT, SIG_IGN);
     signal(SIGTERM, SIG_IGN);
     signal(SIGQUIT, SIG_IGN);
-    signal(SIGTSTP, SIG_IGN);
+    //signal(SIGTSTP, SIG_IGN); //---------- SIGTSTP bugged
+
+    struct sigaction sa2;
+    sigemptyset(&sa2.sa_mask);
+    sa2.sa_flags = SA_RESTART;
+    sa2.sa_handler = child_handler;
+    sigaction(SIGCHLD, &sa2, NULL);
+
+    struct sigaction sa3;
+    sigemptyset(&sa3.sa_mask);
+    sa3.sa_flags = 0;
+    sa3.sa_handler = sigstop_handler;
+    sigaction(SIGTSTP, &sa3, NULL);
+
+    initjobs(jobList); // innitialize jobList
 
     while(status == 1)
     {
@@ -97,12 +168,11 @@ int main()
         }
         
         // split input
-        args = tokenize(input);
+        //args = tokenize(input);
 
-        
-       
+    
         // execute
-        status = execute(args);
+        status = execute(input);
         
         
         //free
@@ -172,9 +242,10 @@ char** tokenize(char* line)
 }
 
 // function for execution
-int execute(char** args)
+int execute(char* line)
 
 {
+    char** args;
     int i;
     char* inFile;
     char* outFile;
@@ -183,6 +254,12 @@ int execute(char** args)
     int inRedirect;
     int outRedirect;
     int background;
+
+    char* cmdline = malloc(strlen(line) + 1);
+    strcpy(cmdline,line);
+
+    // tokenize
+    args = tokenize(line);
 
     pid_t pid = getpid();
 
@@ -222,8 +299,8 @@ int execute(char** args)
     // !!
     if ( strcmp(args[0], "!!") == 0){
         //printf("%s",history[history_counter]);
-        args = tokenize(history[history_counter]);
-        return execute(args);
+        //args = tokenize(history[history_counter]);
+        return execute(history[history_counter]);
     }
 
     // help
@@ -274,8 +351,8 @@ int execute(char** args)
                 strcpy(history[history_counter], line);
                 //printf("keep: %s\n", history[history_counter]);
             }
-            char **token =  tokenize(line);
-            stat = execute(token);
+            //char **token =  tokenize(line);
+            stat = execute(line);
         }
 
         fclose(fp);
@@ -287,25 +364,11 @@ int execute(char** args)
          
     }
 
-    //bg ----------------------------------bugged
-    if (strcmp(args[0], "bg")==0){
-      pid_t pidnumber;
-      pidnumber=atoi(args[1]);
-      printf("PID: %d\n", pidnumber);
-      kill(pidnumber, SIGCONT);
-      return 0;
+    // jobs
+    if ( strcmp(args[0],"jobs") == 0){
+        listjobs(jobList);
+        return 1;
     }
-
-    //fg ----------------------------------bugged
-    // if (strcmp(args[0], "fg")==0){
-    //     pid_t pidnumber;
-    //     pidnumber=atoi(args[1]);
-    //     tcsetpgrp(0, getpgid(pidnumber));
-    //     waitpid(getpgid(pidnumber), NULL, WUNTRACED);
-    //     tcsetpgrp(0, getpgid(shellpid)); shellpid is placeholder
-
-    //   return 0;
-    // }
 
     // make child
     int status;
@@ -319,6 +382,7 @@ int execute(char** args)
         signal(SIGTERM, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
+        signal(SIGCHLD, SIG_DFL);
 
         // redirection
         if (inRedirect >= 0) {
@@ -343,6 +407,7 @@ int execute(char** args)
         if (execvp(args[0], args) == -1) {
             perror("bad command");
         }
+        
         exit(EXIT_FAILURE);
 
     } else if( pid < 0){ // fail
@@ -350,19 +415,32 @@ int execute(char** args)
 
     } else{
         if (background < 0) {
+            int i = addjob(jobList,pid,FG,cmdline);
+
             setpgid(pid, pid);
             signal(SIGTTOU, SIG_IGN);
             tcsetpgrp(STDIN_FILENO, pid);
             tcsetpgrp(STDOUT_FILENO, pid);
-            //int status;
-            waitpid(pid, &status, WUNTRACED);
+            waitpid(pid, &status, WUNTRACED); // wait fg to terminate
             tcsetpgrp(STDOUT_FILENO, getpid());
             tcsetpgrp(STDIN_FILENO, getpid());
 
-            //waitpid(pid, &status, 0);
+            //if
+            if (WIFEXITED(status)) {
+                jobList[i].state = DONE;
+            } else if (WIFSIGNALED(status)) {
+                jobList[i].state = DONE;
+            } else if (WSTOPSIG(status)) {
+                jobList[i].state = ST;
+            }
+
+            //clearjob(&jobList[i]);
+            //deletejob(jobList, pid);
         }
         else{
-            printf("running %d in background\n", pid);
+
+            int i = addjob(jobList,pid,BG,cmdline);
+            //printf("running %d in background\n", pid); //dont wait
         }
     }
 
@@ -402,6 +480,107 @@ int ampersandPresentAt(char** args)
     }
 
     return -1;
+}
+
+// ---------- job helper ----------
+int addjob(struct job *jobList, pid_t pid, int state, char *line){
+    int i;
+    if( pid == 0){
+        return 0;
+    }
+    for(i= 0; i < MAXJOBS; i++){
+        if(jobList[i].pid == 0){
+            jobList[i].pid = pid;
+            jobList[i].state = state;
+            jobList[i].jid = nextjid++;
+            if (nextjid > MAXJOBS){
+                nextjid = 1;
+            }
+            strcpy(jobList[i].line, line);
+            if( jobList[i].state == BG)
+                printf("Added job [%d] %d %s", jobList[i].jid, jobList[i].pid, jobList[i].line);
+            return i;
+        }
+    }
+    printf("try to create too many jobs\n");
+    return 0;
+}
+
+void listjobs(struct job *jobList) 
+{
+    int i;
+    for (i = 0; i < MAXJOBS; i++) {
+	if (jobList[i].pid != 0) {
+	    printf("[%d] %d ", jobList[i].jid, jobList[i].pid);
+	    switch (jobList[i].state) {
+		case BG: 
+		    printf("Running ");
+		    break;
+		case FG: 
+		    printf("Foreground ");
+		    break;
+		case ST: 
+		    printf("Stopped ");
+		    break;
+	    default:
+		    printf("listjobs: Internal error: job[%d].state=%d ", 
+			   i, jobList[i].state);
+	    }
+	    printf("%s", jobList[i].line);
+	}
+    }
+}
+
+struct job *getjobpid(struct job *jobList, pid_t pid) {
+    int i;
+
+    if (pid < 1){
+	    return NULL;}
+    for (i = 0; i < MAXJOBS; i++)
+	    if (jobList[i].pid == pid)
+	        return &jobList[i];
+    return NULL;
+}
+
+int maxjid(struct job *jobList) 
+{
+    int i, max=0;
+
+    for (i = 0; i < MAXJOBS; i++)
+	if (jobList[i].jid > max)
+	    max = jobList[i].jid;
+    return max;
+}
+
+int deletejob(struct job *jobList, pid_t pid) 
+{
+    int i;
+
+    if (pid < 1)
+	return 0;
+
+    for (i = 0; i < MAXJOBS; i++) {
+	if (jobList[i].pid == pid) {
+	    clearjob(&jobList[i]);
+	    nextjid = maxjid(jobList)+1;
+	    return 1;
+	}
+    }
+    return 0;
+}
+
+int pid2jid(pid_t pid) 
+{
+    int i;
+    if (pid < 1){
+	    return 0;
+    }
+    for (i = 0; i < MAXJOBS; i++){
+	    if (jobList[i].pid == pid) {
+            return jobList[i].jid;
+        }
+    }
+    return 0;
 }
 
 
