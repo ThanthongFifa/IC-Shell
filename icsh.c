@@ -432,6 +432,8 @@ int execute(char* line)
                 jobList[i].state = DONE;
             } else if (WSTOPSIG(status)) {
                 jobList[i].state = ST;
+                printf("\n[%d] %d Stopped %s",jobList[i].jid, jobList[i].pid, jobList[i].line);
+
             }
 
             //clearjob(&jobList[i]);
