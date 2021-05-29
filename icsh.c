@@ -393,13 +393,12 @@ int execute(char* line)
         }
 
         jobList[id].state = FG;
+        kill(-(jobList[id].pid),SIGCONT);
         waitpid(jobList[id].pid, &status, WUNTRACED);
-        
         return 1;
     }
 
     // bg
-    
 
     // make child
     pid = fork();
