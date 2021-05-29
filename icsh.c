@@ -387,25 +387,19 @@ int execute(char* line)
         //printf("input id: %d\n",id);
 
         // chack if jid is valid
-        //printf("get job id: %d\n",getjobjid(jobList, id));
         if (getjobjid(jobList, id) <= 0){
             printf("no such job\n");
             return 1;
         }
 
         jobList[id].state = FG;
-        //kill(-(jobList[id].pid),SIGCONT);
-        //printf("[%d] %d ", jobList[id].jid, jobList[id].pid);
         waitpid(jobList[id].pid, &status, WUNTRACED);
-        //printf("fgpid: %d\n", fgpid(jobList));
-        // while(pid == fgpid(jobList)) {
-        //     printf("sleep\n");
-        //     sleep(1);
-        // }
+        
         return 1;
     }
 
     // bg
+    
 
     // make child
     pid = fork();
