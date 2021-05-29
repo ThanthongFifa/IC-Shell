@@ -1,15 +1,3 @@
-/*
-***************** Note to self *****************
-This project is 15% of total grade, dont fuck up!
-checkpoint 1:1.5%
-checkpoint 2:1.5%
-checkpoint 3:1.5% use execvp()
-checkpoint 4:1.5% check lecture4
-checkpoint 5:1.5%
-checkpoint 6:7.5%!! ---very important---
-checkpoint 7:1.5%
-************************************************
-*/
 
 // C Program to design a shell in Linux
 #include <stdio.h>
@@ -89,18 +77,20 @@ pid_t fgpid(struct job *jobList);
 
 // signal
 void sigint_handler(int signal) {
-    printf("]^C found\n");
+    int child_status;
+    pid_t pid;
+    int id;
+    id  = pid2jid(pid);
+    //printf("pid: %d\n",jobList[id].pid);
+    kill((jobList[id].pid),SIGINT);
+    jobList[id].state = DONE;
 }
-
 void child_handler(int sig){
     int child_status;
     pid_t pid;
     int id;
     while ((pid = waitpid(-1, &child_status, WNOHANG)) > 0){       
-        //printf("%d",jobList[i].state);
         id  = pid2jid(pid) - 1;
-        //printf("jid: %d\n", id);
-        //printf("job info: %d\n",jobList[id].jid);
         if( jobList[id].state != FG)
             printf("\njob done: [%d] %d %s",jobList[id].jid, jobList[id].pid, jobList[id].line);
         deletejob(jobList, pid);
@@ -108,7 +98,14 @@ void child_handler(int sig){
 }
 
 void sigstop_handler(int sig) {
-    printf("\n");
+    int child_status;
+    pid_t pid;
+    int id;
+    id  = pid2jid(pid);
+    //printf("pid: %d\n",jobList[id].pid);
+    kill((jobList[id].pid),SIGTSTP);
+    jobList[id].state = ST;
+    printf("\n[%d] %d Stopped %s",jobList[id].jid, jobList[id].pid, jobList[id].line);
 }
 
 
@@ -127,10 +124,8 @@ int main()
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
 
-    //signal(SIGINT, SIG_IGN);
     signal(SIGTERM, SIG_IGN);
     signal(SIGQUIT, SIG_IGN);
-    //signal(SIGTSTP, SIG_IGN); //---------- SIGTSTP bugged
 
     struct sigaction sa2;
     sigemptyset(&sa2.sa_mask);
@@ -141,7 +136,7 @@ int main()
     struct sigaction sa3;
     sigemptyset(&sa3.sa_mask);
     sa3.sa_flags = 0;
-    sa3.sa_handler = sigstop_handler;
+    sa3.sa_handler = &sigstop_handler;
     sigaction(SIGTSTP, &sa3, NULL);
 
     initjobs(jobList); // innitialize jobList
@@ -165,12 +160,7 @@ int main()
             // record history
             history_counter++;
             strcpy(history[history_counter], input);
-            //printf("keep: %s\n", history[history_counter]);
         }
-        
-        // split input
-        //args = tokenize(input);
-
     
         // execute
         status = execute(input);
@@ -398,7 +388,29 @@ int execute(char* line)
         return 1;
     }
 
-    // bg
+    // bg---copy of fg without wait
+    if ( strcmp(args[0],"bg") == 0){
+        struct job *job;
+        int id;
+
+        // check all parameter
+        if ( args[1] == NULL ){
+            printf("bg %%<jid>\n");
+            return 1;
+        }
+
+        id = atoi(&args[1][1]) -1;
+    
+        // chack if jid is valid
+        if (getjobjid(jobList, id) <= 0){
+            printf("no such job\n");
+            return 1;
+        }
+
+        jobList[id].state = BG;
+        kill(jobList[id].pid,SIGCONT);
+        return 1;
+    }
 
     // make child
     pid = fork();
@@ -464,14 +476,10 @@ int execute(char* line)
                 printf("\n[%d] %d Stopped %s",jobList[i].jid, jobList[i].pid, jobList[i].line);
 
             }
-
-            //clearjob(&jobList[i]);
-            //deletejob(jobList, pid);
         }
         else{
 
             int i = addjob(jobList,pid,BG,cmdline);
-            //printf("running %d in background\n", pid); //dont wait
         }
     }
 
@@ -655,4 +663,18 @@ https://github.com/brenns10/lsh/issues/14
 https://stackoverflow.com/questions/38792542/readline-h-history-usage-in-c
 http://www.math.utah.edu/docs/info/hist_2.html
 https://www.tutorialspoint.com/c_standard_library/c_function_fopen.htm
+https://stackoverflow.com/questions/19461744/how-to-make-parent-wait-for-all-child-processes-to-finish
+http://poincare.matf.bg.ac.rs/~ivana/courses/ps/sistemi_knjige/pomocno/apue/APUE/0201433079/ch10lev1sec5.html
+https://stackoverflow.com/questions/7171722/how-can-i-handle-sigchld
+https://stackoverflow.com/questions/4200373/just-check-status-process-in-c
+https://stackoverflow.com/questions/49963727/c-notify-when-a-background-process-is-finished
+https://gist.github.com/DendiBot/ed66adfb03c1d000c4a746756900ba1a
+https://stackoverflow.com/questions/34561250/putting-job-into-foreground-shell-implemented-c
+https://stackoverflow.com/questions/5341220/how-do-i-get-tcsetpgrp-to-work-in-c
+https://stackoverflow.com/questions/12824848/placing-a-process-in-the-background-in-c
+https://stackoverflow.com/questions/33064854/ctrlz-signal-handling-in-c
+https://www.google.com/search?q=c+print+after+catch+ctrl+z&oq=C+print+after+catch&aqs=chrome.1.69i57j33i160.14675j0j7&sourceid=chrome&ie=UTF-8
+https://github.com/brenns10/lsh
+https://github.com/henry226/Simple-Shell
+
 */
