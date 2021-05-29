@@ -34,17 +34,6 @@ int outRedirectPresentAt(char** args);
 //background
 int ampersandPresentAt(char** args);
 
-// signal
-void sigint_handler(int signal) {
-    printf("]^C found\n");
-}
-
-void sigstop_handler(int sig) {
-    printf("]^Z found\n");
-}
-
-
-
 // main functions
 char* readLine();
 char** tokenize(char*);
@@ -87,6 +76,7 @@ void initjobs(struct job *jobs) { // initialize jobList
 	clearjob(&jobs[i]);
 }
 
+// jobs control helpers
 int addjob(struct job *jobs, pid_t pid, int state, char *line);
 void listjobs(struct job *jobList);
 struct job *getjobpid(struct job *jobList, pid_t pid);
@@ -94,6 +84,13 @@ int maxjid(struct job *jobList);
 int deletejob(struct job *jobList, pid_t pid); 
 struct job *getjobpid(struct job *jobList, pid_t pid);
 int pid2jid(pid_t pid);
+int getjobjid(struct job *jobList, int jid);
+pid_t fgpid(struct job *jobList);
+
+// signal
+void sigint_handler(int signal) {
+    printf("]^C found\n");
+}
 
 void child_handler(int sig){
     int child_status;
@@ -108,6 +105,10 @@ void child_handler(int sig){
             printf("\njob done: [%d] %d %s",jobList[id].jid, jobList[id].pid, jobList[id].line);
         deletejob(jobList, pid);
     }
+}
+
+void sigstop_handler(int sig) {
+    printf("\n");
 }
 
 
@@ -254,6 +255,7 @@ int execute(char* line)
     int inRedirect;
     int outRedirect;
     int background;
+    int status;
 
     char* cmdline = malloc(strlen(line) + 1);
     strcpy(cmdline,line);
@@ -370,8 +372,42 @@ int execute(char* line)
         return 1;
     }
 
+    // fg
+    if ( strcmp(args[0],"fg") == 0){
+        struct job *job;
+        int id;
+
+        // check all parameter
+        if ( args[1] == NULL ){
+            printf("fd %%<jid>\n");
+            return 1;
+        }
+
+        id = atoi(&args[1][1]) -1;
+        //printf("input id: %d\n",id);
+
+        // chack if jid is valid
+        //printf("get job id: %d\n",getjobjid(jobList, id));
+        if (getjobjid(jobList, id) <= 0){
+            printf("no such job\n");
+            return 1;
+        }
+
+        jobList[id].state = FG;
+        //kill(-(jobList[id].pid),SIGCONT);
+        //printf("[%d] %d ", jobList[id].jid, jobList[id].pid);
+        waitpid(jobList[id].pid, &status, WUNTRACED);
+        //printf("fgpid: %d\n", fgpid(jobList));
+        // while(pid == fgpid(jobList)) {
+        //     printf("sleep\n");
+        //     sleep(1);
+        // }
+        return 1;
+    }
+
+    // bg
+
     // make child
-    int status;
     pid = fork();
 
     if( pid == 0)
@@ -580,6 +616,33 @@ int pid2jid(pid_t pid)
     for (i = 0; i < MAXJOBS; i++){
 	    if (jobList[i].pid == pid) {
             return jobList[i].jid;
+        }
+    }
+    return 0;
+}
+
+int getjobjid(struct job *jobList, int jid) 
+{
+    int i;
+
+    if (jid < 0){
+	    return -1;
+    }
+    for (i = 0; i < MAXJOBS; i++){
+        //printf("from list:%d\n input: %d", jobList[i].jid,jid);
+	    if (jobList[i].jid == jid){
+	        return 1;
+        }
+    }
+    return -1;
+}
+
+pid_t fgpid(struct job *jobList) {
+    int i;
+
+    for (i = 0; i < MAXJOBS; i++){
+	    if (jobList[i].state == FG){
+	        return jobList[i].pid;
         }
     }
     return 0;
