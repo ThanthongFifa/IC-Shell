@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
-#include<readline/history.h>
+//#include <readline/history.h>
 #include <stdlib.h>
 
 // Buffer
@@ -167,7 +167,7 @@ int main()
         
         
         //free
-        free(args);
+        //free(args);
         free(input);
         free(prompt);
         
@@ -192,9 +192,9 @@ char* readLine()
         }
     }
 
-    if( strcmp("!!", line) != 0){
-        add_history(line);
-    }
+    // if( strcmp("!!", line) != 0){
+    //     add_history(line);
+    // }
     //printf("%d", where_history());
 
     return line;
@@ -561,6 +561,9 @@ void listjobs(struct job *jobList)
 		case ST: 
 		    printf("Stopped ");
 		    break;
+        case DONE: 
+		    deletejob(jobList,jobList[i].pid);
+		    break;
 	    default:
 		    printf("listjobs: Internal error: job[%d].state=%d ", 
 			   i, jobList[i].state);
@@ -630,8 +633,7 @@ int getjobjid(struct job *jobList, int jid)
 	    return -1;
     }
     for (i = 0; i < MAXJOBS; i++){
-        //printf("from list:%d\n input: %d", jobList[i].jid,jid);
-	    if (jobList[i].jid == jid){
+	    if (jobList[i].jid-1 == jid){
 	        return 1;
         }
     }

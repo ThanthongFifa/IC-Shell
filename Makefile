@@ -1,2 +1,2 @@
 icsh: icsh.c
-	gcc icsh.c -lreadline
+	gcc -o icsh icsh.c
